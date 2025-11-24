@@ -32,6 +32,7 @@ def get_data():
 
 
 def predict_completion(data):
+    data = data[-60:]
     if len(data) < 2:
         return None
     
@@ -77,7 +78,7 @@ def read_root(request: Request):
     data, prediction = get_cached_data_and_prediction()
     
     # maybe eventually downsample?
-    labels = [datetime.datetime.fromtimestamp(d[0]).strftime('%Y-%m-%d %H:%M:%S') for d in data]
+    labels = [d[0] * 1000 for d in data]
     values = [d[1] for d in data]
     
     prediction_ts = None

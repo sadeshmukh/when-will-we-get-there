@@ -51,106 +51,199 @@
       <div class="prediction" id="prediction-text">Calculating...</div>
 
       <div style="margin-bottom: 20px">
+        <label style="margin-right: 20px">
+          <input type="checkbox" id="scaleToggle" /> Scale to Max Time
+        </label>
         <label>
-          <input type="checkbox" id="scaleToggle" /> Scale to 100% & Predicted
-          Time
+          <input type="checkbox" id="trendlineToggle" /> Show Trendline
         </label>
       </div>
 
       <canvas id="myChart"></canvas>
     </div>
     <script>
-      const predictionTs = {{ prediction_ts | tojson }};
-      const startTs = {{ start_ts | tojson }};
-      const labels = {{ labels | tojson }};
-      const values = {{ values | tojson }};
+        const predictionTs = {{ prediction_ts | tojson }};
+        const startTs = {{ start_ts | tojson }};
+        const labels = {{ labels | tojson }};
+        const values = {{ values | tojson }};
 
-      // Format prediction text
+        // Format prediction text
       const predictionEl = document.getElementById('prediction-text');
       if (predictionTs) {
         const date = new Date(predictionTs * 1000);
-        predictionEl.textContent = "Predicted 100% at: " + date.toLocaleString();
+        const now = new Date();
+        const hoursRemaining = Math.round((date - now) / (1000 * 60 * 60));
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            predictionEl.textContent = "Predicted 100% at: " + date.toLocaleString() + " " + timeZone + " (in " + hoursRemaining + " hours)";
       } else {
         predictionEl.textContent = "Not enough data to predict.";
       }
 
       const ctx = document.getElementById('myChart').getContext('2d');
       const myChart = new Chart(ctx, {
-          type: 'line',
-          data: {
-              labels: labels,
-              datasets: [{
-                  label: 'Percentage',
-                  data: values,
-                  borderColor: '#000000',
-                  borderWidth: 1.5,
-                  pointRadius: 0,
-                  pointHoverRadius: 4,
-                  fill: false,
-                  tension: 0
-              }]
-          },
-          options: {
-              responsive: true,
-              plugins: {
-                  legend: {
-                      display: false
-                  },
-                  tooltip: {
-                      mode: 'index',
-                      intersect: false,
-                  }
-              },
-              scales: {
-                  x: {
-                      type: 'time',
-                      time: {
-                          unit: 'day',
-                          displayFormats: {
-                              day: 'MMM d'
-                          }
-                      },
-                      display: true, // Changed to true to see the time scale
-                      grid: {
-                          display: false
-                      }
-                  },
-                  y: {
-                      beginAtZero: false,
-                      grid: {
-                          color: '#eeeeee'
-                      }
-                  }
-              },
-              interaction: {
-                  mode: 'nearest',
-                  axis: 'x',
-                  intersect: false
-              }
-          }
-      });
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Percentage',
+                    data: values,
+                    borderColor: '#000000',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    fill: false,
+                    tension: 0
+                },
+                {
+                    label: 'Trendline',
+                    data: [],
+                    borderColor: '#ff6384',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                if (context.length > 0) {
+                                    return new Date(context[0].parsed.x).toLocaleString();
+                                }
+                                return '';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute',
+                            stepSize: 30,
+                            displayFormats: {
+                                minute: 'h:mm'
+                            }
+                        },
+                        ticks: {
+                            stepSize: 30,
+                            source: 'auto'
+                        },
+                        display: true,
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        grid: {
+                            color: '#eeeeee'
+                        }
+                    }
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }
+            }
+        });
 
-      // Toggle Logic
-      const scaleToggle = document.getElementById('scaleToggle');
-      scaleToggle.addEventListener('change', (e) => {
-        if (e.target.checked) {
-          // Scale to 0-100% and Start-Predicted
-          myChart.options.scales.y.min = 0;
-          myChart.options.scales.y.max = 100;
+                // Trendline Logic
+        const trendlineToggle = document.getElementById('trendlineToggle');
+        function updateTrendline() {
+            if (trendlineToggle.checked && labels.length > 1) {
+                // Use only the last 60 points
+                const subsetSize = 60;
+                const startIndex = Math.max(0, labels.length - subsetSize);
 
-          if (predictionTs) {
-             const predictedDate = new Date(predictionTs * 1000);
-             myChart.options.scales.x.max = predictedDate.valueOf();
-          }
+                const subsetLabels = labels.slice(startIndex);
+                const subsetValues = values.slice(startIndex);
 
-        } else {
-          // Reset
-          myChart.options.scales.y.min = undefined;
-          myChart.options.scales.y.max = undefined;
-          myChart.options.scales.x.max = undefined;
+                const n = subsetLabels.length;
+                const refT = subsetLabels[0];
+
+                let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+
+                for (let i = 0; i < n; i++) {
+                    const x = subsetLabels[i] - refT;
+                    const y = subsetValues[i];
+                    sumX += x;
+                    sumY += y;
+                    sumXY += x * y;
+                    sumXX += x * x;
+                }
+
+                const denominator = (n * sumXX - sumX * sumX);
+                if (denominator === 0) return;
+
+                const slope = (n * sumXY - sumX * sumY) / denominator;
+                const intercept = (sumY - slope * sumX) / n;
+
+                // Extend to full range
+                let startX = labels[0];
+                let endX = labels[labels.length - 1];
+
+                // Check if scaled
+                const scaleToggle = document.getElementById('scaleToggle');
+                if (scaleToggle.checked && predictionTs) {
+                    endX = predictionTs * 1000;
+                }
+
+                let startY = slope * (startX - refT) + intercept;
+                let endY = slope * (endX - refT) + intercept;
+
+                // Ensure we don't go below 0%
+                if (startY < 0 && slope !== 0) {
+                    startX = refT - intercept / slope;
+                    startY = 0;
+                }
+                if (endY < 0 && slope !== 0) {
+                    endX = refT - intercept / slope;
+                    endY = 0;
+                }
+
+                myChart.data.datasets[1].data = [
+                    {x: startX, y: startY},
+                    {x: endX, y: endY}
+                ];
+            } else {
+                myChart.data.datasets[1].data = [];
+            }
+            myChart.update();
         }
-        myChart.update();
-      });
+        trendlineToggle.addEventListener('change', updateTrendline);
+
+        // Toggle Logic
+        const scaleToggle = document.getElementById('scaleToggle');
+        scaleToggle.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            // Scale to 0-100% and Start-Predicted
+            myChart.options.scales.y.min = 0;
+            myChart.options.scales.y.max = 100;
+
+            if (predictionTs) {
+               const predictedDate = new Date(predictionTs * 1000);
+               myChart.options.scales.x.max = predictedDate.valueOf();
+            }
+
+          } else {
+            // Reset
+            myChart.options.scales.y.min = undefined;
+            myChart.options.scales.y.max = undefined;
+            myChart.options.scales.x.max = undefined;
+          }
+          updateTrendline();
+        });
     </script>
   </body>
 </html>

@@ -1,0 +1,14 @@
+[Unit]
+Description=When Will We Get There - webserver
+After=network.target
+
+[Service]
+Type=simple
+Environment="PORT=14083"
+WorkingDirectory=%h/when-will-we-get-there
+ExecStart=%h/.local/bin/uv run main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

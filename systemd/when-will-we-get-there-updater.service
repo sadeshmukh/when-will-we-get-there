@@ -1,0 +1,13 @@
+[Unit]
+Description=When Will We Get There - Updater
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/when-will-we-get-there
+ExecStart=%h/.local/bin/uv run updater.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -2,33 +2,28 @@
 import asyncio
 from datetime import datetime
 import aiohttp
-from bs4 import BeautifulSoup
 import logging
 
 
 async def get_completion() -> tuple[str | None, float | None]:
-    url = "https://are-we-there-yet.hackclub.com"
-    selector = ".progress-text"
+    url = "https://are-we-there-yet.hackclub.com/api/status"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             response.raise_for_status()
-            html = await response.text()
+            data = await response.json()
             
-    soup = BeautifulSoup(html, "html.parser")
-    percentage_element = soup.select_one(selector)
-
-    timestamp_element = soup.select_one(".last-updated")
-    # e.g. Last updated: 2025-11-24 19:10:26 +0000
-    
-    
-    if percentage_element and timestamp_element:
-        time_parsed = timestamp_element.get_text(strip=True)[14:]
-        unix_timestamp = datetime.strptime(time_parsed, "%Y-%m-%d %H:%M:%S %z").timestamp()
-        return percentage_element.get_text(strip=True)[:-1], unix_timestamp
-    if percentage_element or timestamp_element:
-        logging.warning("Incomplete data retrieved, something is probably wrong (me when break parsing)")
-    logging.error("Could not retrieve completion percentage or timestamp")
-    return None, None
+    try:
+        percentage = data["migration_data"]["percent_completed"]
+        last_updated_str = data["last_updated"]
+        
+        # ISO format: 2025-11-24T20:11:39.518+00:00
+        dt = datetime.fromisoformat(last_updated_str)
+        unix_timestamp = dt.timestamp()
+        
+        return str(percentage), unix_timestamp
+    except (KeyError, ValueError) as e:
+        logging.error(f"Error parsing API response: {e}")
+        return None, None
 
 
 async def main():

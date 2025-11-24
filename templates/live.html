@@ -87,6 +87,15 @@
         transition: width 0.5s ease-out;
         box-shadow: 0 0 10px #00ff00;
       }
+
+      .warning {
+        color: #ff3333;
+        font-size: 1.2rem;
+        margin-top: 20px;
+        font-weight: bold;
+        animation: blinker 2s linear infinite;
+        display: none;
+      }
     </style>
     <!-- Odometer for scrolling numbers -->
     <link
@@ -109,6 +118,7 @@
 
       <div class="label">Estimated Arrival</div>
       <div id="countdown">CALCULATING...</div>
+      <div id="warning" class="warning"></div>
     </div>
 
     <div class="meta">LIVE DATA FEED <span class="blink">●</span></div>
@@ -162,6 +172,24 @@
         } else {
           countdownEl.textContent = "UNKNOWN";
           countdownEl.style.color = "#666";
+        }
+
+        // Check for stale data
+        const warningEl = document.getElementById("warning");
+        if (data.last_data_ts) {
+          const lastDataDate = new Date(data.last_data_ts * 1000);
+          const now = new Date();
+          const diffSeconds = (now - lastDataDate) / 1000;
+
+          if (diffSeconds > 300) {
+            // 5 minutes
+            warningEl.style.display = "block";
+            warningEl.textContent =
+              "WARNING: DATA STALE. LAST UPDATED: " +
+              lastDataDate.toLocaleString();
+          } else {
+            warningEl.style.display = "none";
+          }
         }
       }
 

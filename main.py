@@ -111,11 +111,13 @@ def get_api_data():
         prediction_ts = prediction.timestamp()
         
     current_val = data[-1][1] if data else 0
+    last_data_ts = data[-1][0] if data else 0
     
     return {
         "current_percentage": current_val,
         "prediction_ts": prediction_ts,
-        "last_updated": _cache["last_updated"]
+        "last_updated": _cache["last_updated"],
+        "last_data_ts": last_data_ts
     }
 
 

@@ -58,6 +58,9 @@
         <label>
           <input type="checkbox" id="trendlineToggle" /> Show Trendline
         </label>
+        <label style="margin-left: 20px">
+          <input type="checkbox" id="zoomLastHourToggle" /> Zoom Last Hour
+        </label>
       </div>
 
       <canvas id="myChart"></canvas>
@@ -236,8 +239,16 @@
 
         // Toggle Logic
         const scaleToggle = document.getElementById('scaleToggle');
+        const zoomLastHourToggle = document.getElementById('zoomLastHourToggle');
+
         scaleToggle.addEventListener('change', (e) => {
           if (e.target.checked) {
+            // Uncheck Zoom Last Hour if checked
+            if (zoomLastHourToggle.checked) {
+                zoomLastHourToggle.checked = false;
+                myChart.options.scales.x.min = undefined;
+            }
+
             // Scale to 0-100% and Start-Predicted
             myChart.options.scales.y.min = 0;
             myChart.options.scales.y.max = 100;
@@ -254,6 +265,26 @@
             myChart.options.scales.x.max = undefined;
           }
           updateTrendline();
+        });
+
+        // Zoom Last Hour Logic
+        zoomLastHourToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                // Uncheck Scale to Max Time if checked
+                if (scaleToggle.checked) {
+                    scaleToggle.checked = false;
+                    myChart.options.scales.y.min = undefined;
+                    myChart.options.scales.y.max = undefined;
+                    myChart.options.scales.x.max = undefined;
+                }
+
+                const oneHourAgo = Date.now() - (60 * 60 * 1000);
+                myChart.options.scales.x.min = oneHourAgo;
+            } else {
+                myChart.options.scales.x.min = undefined;
+            }
+            updateTrendline();
+            myChart.update();
         });
     </script>
   </body>

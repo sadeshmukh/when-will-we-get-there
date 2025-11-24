@@ -97,6 +97,29 @@ def read_root(request: Request):
     )
 
 
+@app.get("/live", response_class=HTMLResponse)
+def read_live(request: Request):
+    return templates.TemplateResponse(request=request, name="live.html", context={})
+
+
+@app.get("/api/data")
+def get_api_data():
+    data, prediction = get_cached_data_and_prediction()
+    
+    prediction_ts = None
+    if prediction:
+        prediction_ts = prediction.timestamp()
+        
+    current_val = data[-1][1] if data else 0
+    
+    return {
+        "current_percentage": current_val,
+        "prediction_ts": prediction_ts,
+        "last_updated": _cache["last_updated"]
+    }
+
+
+
 
 if __name__ == "__main__":
     import uvicorn

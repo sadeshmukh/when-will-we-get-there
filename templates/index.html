@@ -47,6 +47,7 @@
           style="color: #888"
           >are-we-there-yet.hackclub.com</a
         >
+        | <a href="/live" style="color: #888">Live View</a>
       </div>
       <div class="prediction" id="prediction-text">Calculating...</div>
 
@@ -120,6 +121,16 @@
                                     return new Date(context[0].parsed.x).toLocaleString();
                                 }
                                 return '';
+                            },
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toFixed(2);
+                                }
+                                return label;
                             }
                         }
                     }

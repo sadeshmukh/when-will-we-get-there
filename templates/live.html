@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>LIVE STATUS</title>
+    <style>
+      body {
+        background-color: #000000;
+        color: #00ff00; /* Hacker green or maybe a suspenseful red? Let's go with high contrast white/red/green */
+        font-family: "Courier New", Courier, monospace;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      .container {
+        text-align: center;
+        width: 100%;
+      }
+
+      .label {
+        font-size: 1.5rem;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        margin-bottom: 10px;
+      }
+
+      #percentage-container {
+        font-size: 15vw;
+        font-weight: bold;
+        color: #ffffff;
+        text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        line-height: 1;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: baseline;
+      }
+
+      /* Override odometer font to match */
+      .odometer.odometer-auto-theme,
+      .odometer.odometer-theme-default {
+        font-family: "Courier New", Courier, monospace !important;
+        line-height: 1 !important;
+      }
+
+      #countdown {
+        font-size: 3rem;
+        color: #ff3333;
+        margin-bottom: 40px;
+      }
+
+      .meta {
+        font-size: 0.8rem;
+        color: #444;
+        position: fixed;
+        bottom: 20px;
+      }
+
+      .blink {
+        animation: blinker 1s linear infinite;
+      }
+
+      @keyframes blinker {
+        50% {
+          opacity: 0;
+        }
+      }
+
+      .progress-bar-container {
+        width: 80%;
+        height: 10px;
+        background-color: #333;
+        margin: 0 auto 40px auto;
+        border-radius: 5px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        background-color: #00ff00;
+        width: 0%;
+        transition: width 0.5s ease-out;
+        box-shadow: 0 0 10px #00ff00;
+      }
+    </style>
+    <!-- Odometer for scrolling numbers -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/themes/odometer-theme-default.min.css"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="label">Current Progress</div>
+      <div id="percentage-container">
+        <div id="percentage" class="odometer">0.00</div>
+        %
+      </div>
+
+      <div class="progress-bar-container">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+
+      <div class="label">Estimated Arrival</div>
+      <div id="countdown">CALCULATING...</div>
+    </div>
+
+    <div class="meta">LIVE DATA FEED <span class="blink">●</span></div>
+
+    <script>
+      // Configure Odometer
+      window.odometerOptions = {
+        format: "(,ddd).dd", // 2 decimal places
+        duration: 2000, // Animation duration in ms
+        animation: "count",
+      };
+
+      function updateDisplay(data) {
+        // Update Percentage
+        const percentageEl = document.getElementById("percentage");
+        const progressBarEl = document.getElementById("progress-bar");
+
+        // Odometer handles the animation when innerHTML changes
+        // We just pass the number. Odometer parses it.
+        // Ensure it's a number for Odometer
+        percentageEl.innerHTML = data.current_percentage;
+
+        progressBarEl.style.width =
+          Math.min(100, Math.max(0, data.current_percentage)) + "%";
+
+        // Update Countdown
+        const countdownEl = document.getElementById("countdown");
+        if (data.prediction_ts) {
+          const target = new Date(data.prediction_ts * 1000);
+          const now = new Date();
+          const diff = target - now;
+
+          if (diff > 0) {
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+            const ms = Math.floor((diff % 1000) / 10); // Show centiseconds for speed
+
+            countdownEl.textContent = `${hours
+              .toString()
+              .padStart(2, "0")}:${minutes
+              .toString()
+              .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${ms
+              .toString()
+              .padStart(2, "0")}`;
+            countdownEl.style.color = "#ff3333";
+          } else {
+            countdownEl.textContent = "ARRIVED";
+            countdownEl.style.color = "#00ff00";
+          }
+        } else {
+          countdownEl.textContent = "UNKNOWN";
+          countdownEl.style.color = "#666";
+        }
+      }
+
+      async function fetchData() {
+        try {
+          const response = await fetch("/api/data");
+          const data = await response.json();
+          updateDisplay(data);
+
+          // Store prediction for smooth countdown between fetches
+          window.lastPredictionTs = data.prediction_ts;
+        } catch (e) {
+          console.error("Fetch error", e);
+        }
+      }
+
+      // Update countdown locally every 50ms for smooth effect
+      setInterval(() => {
+        if (window.lastPredictionTs) {
+          const target = new Date(window.lastPredictionTs * 1000);
+          const now = new Date();
+          const diff = target - now;
+
+          const countdownEl = document.getElementById("countdown");
+
+          if (diff > 0) {
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+            const ms = Math.floor((diff % 1000) / 10);
+
+            countdownEl.textContent = `${hours
+              .toString()
+              .padStart(2, "0")}:${minutes
+              .toString()
+              .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${ms
+              .toString()
+              .padStart(2, "0")}`;
+          }
+        }
+      }, 50);
+
+      // Fetch new data every 5 seconds
+      fetchData();
+      setInterval(fetchData, 5000);
+    </script>
+  </body>
+</html>

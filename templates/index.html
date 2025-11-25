@@ -62,6 +62,7 @@
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
   </head>
   <body>
     <div class="container">
@@ -97,6 +98,9 @@
             <label>
               <input type="checkbox" id="zoomLastHourToggle" /> Zoom Last Hour
             </label>
+            <label>
+              <input type="checkbox" id="migrationPeriodsToggle" /> Show Migration Periods
+            </label>
           </div>
           <label>
             <input type="checkbox" id="lightModeToggle" /> Light Mode
@@ -116,7 +120,7 @@
             <label
               for="modelSelect"
               style="margin-right: 10px; font-size: 0.9rem"
-              >Model:</label
+              >Trend Model:</label
             >
             <select id="modelSelect" style="padding: 5px">
               <option value="linear">Linear (Standard)</option>
@@ -146,8 +150,21 @@
       </div>
 
       <canvas id="myChart"></canvas>
+
+      <div id="migrationNote" style="display: none; font-size: 0.85rem; color: var(--prediction-color); margin-top: 15px; text-align: center;">
+        Something not updated? Message @sahil
+      </div>
     </div>
     <script>
+      // Migration period timestamps (in milliseconds)
+      const USERS_START = 1764012290000;
+      const USERS_END = 1764017400000;
+      const FILES_START = 1764017400000;
+      const FILES_END = 1764035700000;
+      const DMS_START = 1764018600000;
+      const GROUP_DMS_START = 1764019200000;
+      const GROUP_DMS_END = 1764024300000;
+
       const predictionTs = {{ prediction_ts | tojson }};
       const startTs = {{ start_ts | tojson }};
       const labels = {{ labels | tojson }};
@@ -160,6 +177,8 @@
       const zoomLastHourToggle = document.getElementById('zoomLastHourToggle');
       const lightModeToggle = document.getElementById('lightModeToggle');
       const modelSelect = document.getElementById('modelSelect');
+      const migrationPeriodsToggle = document.getElementById('migrationPeriodsToggle');
+      const migrationNote = document.getElementById('migrationNote');
 
       // Set max value for slider
       if (labels.length > 0) {
@@ -202,6 +221,130 @@
               plugins: {
                   legend: {
                       display: false
+                  },
+                  annotation: {
+                      annotations: {
+                          usersStart: {
+                              type: 'line',
+                              xMin: USERS_START,
+                              xMax: USERS_START,
+                              borderColor: 'rgba(59, 130, 246, 0.7)',
+                              borderWidth: 2,
+                              borderDash: [5, 5],
+                              display: false,
+                              label: {
+                                  display: true,
+                                  content: 'Users →',
+                                  position: 'end',
+                                  yAdjust: -10,
+                                  color: 'rgba(59, 130, 246, 0.9)',
+                                  font: {
+                                      size: 11,
+                                      weight: 'bold'
+                                  }
+                              }
+                          },
+                          filesStart: {
+                              type: 'line',
+                              xMin: FILES_START,
+                              xMax: FILES_START,
+                              borderColor: 'rgba(16, 185, 129, 0.7)',
+                              borderWidth: 2,
+                              borderDash: [5, 5],
+                              display: false,
+                              label: {
+                                  display: true,
+                                  content: ['Files →', '(Users pause)'],
+                                  position: 'end',
+                                  yAdjust: -10,
+                                  color: 'rgba(16, 185, 129, 0.9)',
+                                  font: {
+                                      size: 11,
+                                      weight: 'bold'
+                                  }
+                              }
+                          },
+                          filesEnd: {
+                              type: 'line',
+                              xMin: FILES_END,
+                              xMax: FILES_END,
+                              borderColor: 'rgba(16, 185, 129, 0.7)',
+                              borderWidth: 2,
+                              borderDash: [5, 5],
+                              display: false,
+                              label: {
+                                  display: true,
+                                  content: '← Files',
+                                  position: 'start',
+                                  yAdjust: 10,
+                                  color: 'rgba(16, 185, 129, 0.9)',
+                                  font: {
+                                      size: 11,
+                                      weight: 'bold'
+                                  }
+                              }
+                          },
+                          dmsStart: {
+                              type: 'line',
+                              xMin: DMS_START,
+                              xMax: DMS_START,
+                              borderColor: 'rgba(251, 191, 36, 0.7)',
+                              borderWidth: 2,
+                              borderDash: [5, 5],
+                              display: false,
+                              label: {
+                                  display: true,
+                                  content: 'DMs →',
+                                  position: 'end',
+                                  yAdjust: 50,
+                                  color: 'rgba(251, 191, 36, 0.9)',
+                                  font: {
+                                      size: 11,
+                                      weight: 'bold'
+                                  }
+                              }
+                          },
+                          groupDmsStart: {
+                              type: 'line',
+                              xMin: GROUP_DMS_START,
+                              xMax: GROUP_DMS_START,
+                              borderColor: 'rgba(244, 114, 182, 0.7)',
+                              borderWidth: 2,
+                              borderDash: [5, 5],
+                              display: false,
+                              label: {
+                                  display: true,
+                                  content: 'Group DMs →',
+                                  position: 'end',
+                                  yAdjust: 70,
+                                  color: 'rgba(244, 114, 182, 0.9)',
+                                  font: {
+                                      size: 11,
+                                      weight: 'bold'
+                                  }
+                              }
+                          },
+                          groupDmsEnd: {
+                              type: 'line',
+                              xMin: GROUP_DMS_END,
+                              xMax: GROUP_DMS_END,
+                              borderColor: 'rgba(244, 114, 182, 0.7)',
+                              borderWidth: 2,
+                              borderDash: [5, 5],
+                              display: false,
+                              label: {
+                                  display: true,
+                                  content: '← Group DMs',
+                                  position: 'start',
+                                  yAdjust: -50,
+                                  color: 'rgba(244, 114, 182, 0.9)',
+                                  font: {
+                                      size: 11,
+                                      weight: 'bold'
+                                  }
+                              }
+                          }
+                      }
                   },
                   tooltip: {
                       mode: 'index',
@@ -593,6 +736,41 @@
           myChart.options.scales.y.ticks.color = style.getPropertyValue('--chart-tick-color').trim();
           myChart.options.scales.y.grid.color = style.getPropertyValue('--chart-grid-color').trim();
 
+          // Update annotation colors for light mode
+          const isLightMode = e.target.checked;
+          const opacity = isLightMode ? 0.9 : 0.7;
+          const labelOpacity = isLightMode ? 1.0 : 0.9;
+          
+          myChart.options.plugins.annotation.annotations.usersStart.borderColor = `rgba(59, 130, 246, ${opacity})`;
+          myChart.options.plugins.annotation.annotations.usersStart.label.color = `rgba(59, 130, 246, ${labelOpacity})`;
+          
+          myChart.options.plugins.annotation.annotations.filesStart.borderColor = `rgba(16, 185, 129, ${opacity})`;
+          myChart.options.plugins.annotation.annotations.filesStart.label.color = `rgba(16, 185, 129, ${labelOpacity})`;
+          
+          myChart.options.plugins.annotation.annotations.filesEnd.borderColor = `rgba(16, 185, 129, ${opacity})`;
+          myChart.options.plugins.annotation.annotations.filesEnd.label.color = `rgba(16, 185, 129, ${labelOpacity})`;
+          
+          myChart.options.plugins.annotation.annotations.dmsStart.borderColor = `rgba(251, 191, 36, ${opacity})`;
+          myChart.options.plugins.annotation.annotations.dmsStart.label.color = `rgba(251, 191, 36, ${labelOpacity})`;
+          
+          myChart.options.plugins.annotation.annotations.groupDmsStart.borderColor = `rgba(244, 114, 182, ${opacity})`;
+          myChart.options.plugins.annotation.annotations.groupDmsStart.label.color = `rgba(244, 114, 182, ${labelOpacity})`;
+          
+          myChart.options.plugins.annotation.annotations.groupDmsEnd.borderColor = `rgba(244, 114, 182, ${opacity})`;
+          myChart.options.plugins.annotation.annotations.groupDmsEnd.label.color = `rgba(244, 114, 182, ${labelOpacity})`;
+
+          myChart.update();
+      });
+
+      migrationPeriodsToggle.addEventListener('change', (e) => {
+          const show = e.target.checked;
+          myChart.options.plugins.annotation.annotations.usersStart.display = show;
+          myChart.options.plugins.annotation.annotations.filesStart.display = show;
+          myChart.options.plugins.annotation.annotations.filesEnd.display = show;
+          myChart.options.plugins.annotation.annotations.dmsStart.display = show;
+          myChart.options.plugins.annotation.annotations.groupDmsStart.display = show;
+          myChart.options.plugins.annotation.annotations.groupDmsEnd.display = show;
+          migrationNote.style.display = show ? 'block' : 'none';
           myChart.update();
       });
 

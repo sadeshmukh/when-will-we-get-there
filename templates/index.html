@@ -109,23 +109,39 @@
             align-items: center;
             justify-content: center;
             padding-top: 10px;
+            gap: 20px;
           "
         >
-          <label
-            for="trendlineSlider"
-            style="margin-right: 10px; font-size: 0.9rem"
-          >
-            Trendline Window:
-            <span id="trendlineValue" style="font-weight: bold">60</span> min
-          </label>
-          <input
-            type="range"
-            id="trendlineSlider"
-            min="10"
-            step="5"
-            value="60"
-            style="width: 200px"
-          />
+          <div style="display: flex; align-items: center">
+            <label
+              for="modelSelect"
+              style="margin-right: 10px; font-size: 0.9rem"
+              >Model:</label
+            >
+            <select id="modelSelect" style="padding: 5px">
+              <option value="linear">Linear (Standard)</option>
+              <option value="exponential">Exponential</option>
+              <option value="gompertz">Gompertz</option>
+            </select>
+          </div>
+
+          <div style="display: flex; align-items: center">
+            <label
+              for="trendlineSlider"
+              style="margin-right: 10px; font-size: 0.9rem"
+            >
+              Window:
+              <span id="trendlineValue" style="font-weight: bold">60</span> min
+            </label>
+            <input
+              type="range"
+              id="trendlineSlider"
+              min="10"
+              step="5"
+              value="60"
+              style="width: 150px"
+            />
+          </div>
         </div>
       </div>
 
@@ -143,6 +159,7 @@
       const scaleToggle = document.getElementById('scaleToggle');
       const zoomLastHourToggle = document.getElementById('zoomLastHourToggle');
       const lightModeToggle = document.getElementById('lightModeToggle');
+      const modelSelect = document.getElementById('modelSelect');
 
       // Set max value for slider
       if (labels.length > 0) {
@@ -279,9 +296,96 @@
            return { slope, intercept, refT };
       }
 
+      function calculateExponentialRegression(subsetLabels, subsetValues) {
+          // Fit y = 100 - A * e^(B * (x - refT))
+          // ln(100 - y) = ln(A) + B * (x - refT)
+          // Y = alpha + beta * X
+          // Y = ln(100 - y), X = x - refT
+          // A = exp(alpha), B = beta
+
+          const n = subsetLabels.length;
+          if (n < 2) return null;
+
+          const refT = subsetLabels[0];
+          let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+          let count = 0;
+
+          for (let i = 0; i < n; i++) {
+              const val = subsetValues[i];
+              if (val >= 100) continue; // Cannot take log of <= 0
+
+              const y = Math.log(100 - val);
+              const x = subsetLabels[i] - refT;
+
+              sumX += x;
+              sumY += y;
+              sumXY += x * y;
+              sumXX += x * x;
+              count++;
+          }
+
+          if (count < 2) return null;
+
+          const denominator = (count * sumXX - sumX * sumX);
+          if (denominator === 0) return null;
+
+          const beta = (count * sumXY - sumX * sumY) / denominator;
+          const alpha = (sumY - beta * sumX) / count;
+
+          return { A: Math.exp(alpha), B: beta, refT };
+      }
+
+      function calculateGompertzRegression(subsetLabels, subsetValues) {
+          // y = 100 * exp(-b * exp(-c * (x - refT)))
+          // ln(y/100) = -b * exp(-c * (x - refT))
+          // ln(-ln(y/100)) = ln(b) - c * (x - refT)
+          // Y = A + B * X
+          // Y = ln(-ln(y/100))
+          // X = x - refT
+          // B = -c  => c = -B
+          // A = ln(b) => b = exp(A)
+
+          const n = subsetLabels.length;
+          if (n < 2) return null;
+
+          const refT = subsetLabels[0];
+          let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+          let count = 0;
+
+          for (let i = 0; i < n; i++) {
+              const val = subsetValues[i];
+              if (val <= 0 || val >= 100) continue;
+
+              const term1 = val / 100.0;
+              const term2 = Math.log(term1); // negative
+              const y = Math.log(-term2);    // ln(-ln(val/100))
+              const x = subsetLabels[i] - refT;
+
+              sumX += x;
+              sumY += y;
+              sumXY += x * y;
+              sumXX += x * x;
+              count++;
+          }
+
+          if (count < 2) return null;
+
+          const denominator = (count * sumXX - sumX * sumX);
+          if (denominator === 0) return null;
+
+          const slope = (count * sumXY - sumX * sumY) / denominator;
+          const intercept = (sumY - slope * sumX) / count;
+
+          const c = -slope;
+          const b = Math.exp(intercept);
+
+          return { b, c, refT };
+      }
+
       function updateTrendline() {
           const minutes = parseInt(trendlineSlider.value);
           trendlineValueDisplay.textContent = minutes;
+          const model = modelSelect.value;
 
           if (labels.length < 2) {
               predictionEl.textContent = "Not enough data to predict.";
@@ -301,19 +405,95 @@
               }
           }
 
-          const reg = calculateRegression(subsetLabels, subsetValues);
           let targetX = null;
+          let trendData = [];
 
-          if (reg && reg.slope > 0) {
-              // Calculate prediction
-              // y = slope * (x - refT) + intercept
-              // 100 = slope * (targetX - refT) + intercept
-              // targetX = ((100 - intercept) / slope) + refT
+          if (model === 'linear') {
+              const reg = calculateRegression(subsetLabels, subsetValues);
+              if (reg && reg.slope > 0) {
+                  targetX = ((100 - reg.intercept) / reg.slope) + reg.refT;
 
-              targetX = ((100 - reg.intercept) / reg.slope) + reg.refT;
+                  let startX = labels[0];
+                  let endX = labels[labels.length - 1];
+                  if (scaleToggle.checked) endX = targetX;
+
+                  let startY = reg.slope * (startX - reg.refT) + reg.intercept;
+                  let endY = reg.slope * (endX - reg.refT) + reg.intercept;
+
+                  if (startY < 0) {
+                      startX = -reg.intercept / reg.slope + reg.refT;
+                      startY = 0;
+                  }
+                  trendData = [{x: startX, y: startY}, {x: endX, y: endY}];
+              }
+          } else if (model === 'exponential') {
+              const reg = calculateExponentialRegression(subsetLabels, subsetValues);
+              if (reg && reg.B < 0) {
+                  // y = 100 - A * e^(B * (x - refT))
+                  // Solve for y = 99 (effectively done)
+                  // 99 = 100 - A * e^(B * t)
+                  // -1 = -A * e^(B * t)
+                  // 1/A = e^(B * t)
+                  // ln(1/A) = B * t
+                  // t = ln(1/A) / B
+
+                  const tRel = Math.log(1.0 / reg.A) / reg.B;
+                  targetX = tRel + reg.refT;
+
+                  // Generate curve points
+                  let startX = labels[0];
+                  let endX = labels[labels.length - 1];
+                  if (scaleToggle.checked && targetX) endX = targetX;
+
+                  const steps = 50;
+                  const stepSize = (endX - startX) / steps;
+
+                  for (let i = 0; i <= steps; i++) {
+                      const t = startX + i * stepSize;
+                      const x = t - reg.refT;
+                      const y = 100 - reg.A * Math.exp(reg.B * x);
+                      if (y >= 0) {
+                          trendData.push({x: t, y: y});
+                      }
+                  }
+              }
+          } else if (model === 'gompertz') {
+              const reg = calculateGompertzRegression(subsetLabels, subsetValues);
+              if (reg && reg.c > 0) {
+                  // 99 = 100 * exp(-b * exp(-c * t))
+                  // 0.99 = exp(-b * exp(-c * t))
+                  // ln(0.99) = -b * exp(-c * t)
+                  // -ln(0.99)/b = exp(-c * t)
+                  // ln(-ln(0.99)/b) = -c * t
+                  // t = -ln(-ln(0.99)/b) / c
+
+                  const term = -Math.log(0.99) / reg.b;
+                  if (term > 0) {
+                      const tRel = -Math.log(term) / reg.c;
+                      targetX = tRel + reg.refT;
+                  }
+
+                  // Generate curve points
+                  let startX = labels[0];
+                  let endX = labels[labels.length - 1];
+                  if (scaleToggle.checked && targetX) endX = targetX;
+
+                  const steps = 50;
+                  const stepSize = (endX - startX) / steps;
+
+                  for (let i = 0; i <= steps; i++) {
+                      const t = startX + i * stepSize;
+                      const x = t - reg.refT;
+                      const y = 100 * Math.exp(-reg.b * Math.exp(-reg.c * x));
+                      if (y >= 0) {
+                          trendData.push({x: t, y: y});
+                      }
+                  }
+              }
+          }
+
+          if (targetX) {
               const predictionDate = new Date(targetX);
-
-              // Update text
               const now = new Date();
 
               const options = {
@@ -335,37 +515,21 @@
               }
               timeRemaining += `${diffMins}m`;
 
-              predictionEl.innerHTML = `Predicted completion: <span style="color:var(--text-color); font-weight:bold">${formattedDate}</span> <span style="font-size:0.9em">(in ${timeRemaining})</span>`;
+              let prefix = "Predicted completion";
+              if (model === 'exponential' || model === 'gompertz') prefix = "Predicted 99%";
 
-              // Update Chart Trendline
-              // Extend to full range or predicted time
-              let startX = labels[0];
-              let endX = labels[labels.length - 1];
-
-              if (scaleToggle.checked) {
-                  endX = targetX;
-              }
-
-              let startY = reg.slope * (startX - reg.refT) + reg.intercept;
-              let endY = reg.slope * (endX - reg.refT) + reg.intercept;
-
-               // Ensure we don't go below 0%
-              if (startY < 0) {
-                  // 0 = slope * (x - refT) + intercept
-                  // x = -intercept/slope + refT
-                  startX = -reg.intercept / reg.slope + reg.refT;
-                  startY = 0;
-              }
-
-              myChart.data.datasets[1].data = [
-                  {x: startX, y: startY},
-                  {x: endX, y: endY}
-              ];
-
+              predictionEl.innerHTML = `${prefix}: <span style="color:var(--text-color); font-weight:bold">${formattedDate}</span> <span style="font-size:0.9em">(in ${timeRemaining})</span>`;
           } else {
-              predictionEl.textContent = "Cannot predict completion (slope <= 0 or insufficient data).";
-              myChart.data.datasets[1].data = [];
+              if (model === 'exponential') {
+                   predictionEl.textContent = "Prediction: Not converging (rate is increasing or constant).";
+              } else if (model === 'gompertz') {
+                   predictionEl.textContent = "Prediction: Not converging (growth rate not decaying).";
+              } else {
+                   predictionEl.textContent = "Cannot predict completion.";
+              }
           }
+
+          myChart.data.datasets[1].data = trendData;
 
           // Update scale max if needed
           if (scaleToggle.checked) {
@@ -391,9 +555,8 @@
           }
 
           myChart.update();
-      }
-
-      trendlineSlider.addEventListener('input', updateTrendline);
+      }      trendlineSlider.addEventListener('input', updateTrendline);
+      modelSelect.addEventListener('change', updateTrendline);
 
       scaleToggle.addEventListener('change', (e) => {
         if (e.target.checked) {

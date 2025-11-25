@@ -3,16 +3,39 @@
   <head>
     <title>Progress Tracker</title>
     <style>
+      :root {
+        --bg-color: #0f172a;
+        --text-color: #f8fafc;
+        --link-color: #94a3b8;
+        --prediction-color: #cbd5e1;
+        --chart-line-color: #38bdf8;
+        --chart-trend-color: #f472b6;
+        --chart-grid-color: #334155;
+        --chart-tick-color: #94a3b8;
+      }
+
+      .light-mode {
+        --bg-color: #fdf6e3;
+        --text-color: #000000;
+        --link-color: #666666;
+        --prediction-color: #555555;
+        --chart-line-color: #000000;
+        --chart-trend-color: #ff6384;
+        --chart-grid-color: #dcdcdc;
+        --chart-tick-color: #666666;
+      }
+
       body {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
           Roboto, Helvetica, Arial, sans-serif;
-        background-color: #ffffff;
-        color: #000000;
+        background-color: var(--bg-color);
+        color: var(--text-color);
         display: flex;
         flex-direction: column;
         align-items: center;
         padding-top: 50px;
         margin: 0;
+        transition: background-color 0.3s, color 0.3s;
       }
       .container {
         width: 90%;
@@ -26,8 +49,11 @@
       }
       .prediction {
         font-size: 1.2rem;
-        color: #555;
+        color: var(--prediction-color);
         margin-bottom: 3rem;
+      }
+      a {
+        color: var(--link-color) !important;
       }
       canvas {
         width: 100% !important;
@@ -41,251 +67,374 @@
     <div class="container">
       <h1>When Will We Get There?!</h1>
       <div style="margin-bottom: 1rem; font-size: 0.9rem">
-        <a
-          href="https://are-we-there-yet.hackclub.com"
-          target="_blank"
-          style="color: #888"
-          >are-we-there-yet.hackclub.com</a
+        <a href="https://are-we-there-yet.hackclub.com" target="_blank"
+          >Source</a
         >
-        | <a href="/live" style="color: #888">Live View</a>
+        | <a href="/live">Live</a>
       </div>
       <div class="prediction" id="prediction-text">Calculating...</div>
 
-      <div style="margin-bottom: 20px">
-        <label style="margin-right: 20px">
-          <input type="checkbox" id="scaleToggle" /> Scale to Max Time
-        </label>
-        <label>
-          <input type="checkbox" id="trendlineToggle" /> Show Trendline
-        </label>
-        <label style="margin-left: 20px">
-          <input type="checkbox" id="zoomLastHourToggle" /> Zoom Last Hour
-        </label>
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          margin-bottom: 20px;
+        "
+      >
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 15px;
+          "
+        >
+          <div style="display: flex; gap: 15px">
+            <label>
+              <input type="checkbox" id="scaleToggle" /> Scale to Max Time
+            </label>
+            <label>
+              <input type="checkbox" id="zoomLastHourToggle" /> Zoom Last Hour
+            </label>
+          </div>
+          <label>
+            <input type="checkbox" id="lightModeToggle" /> Light Mode
+          </label>
+        </div>
+
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-top: 10px;
+          "
+        >
+          <label
+            for="trendlineSlider"
+            style="margin-right: 10px; font-size: 0.9rem"
+          >
+            Trendline Window:
+            <span id="trendlineValue" style="font-weight: bold">60</span> min
+          </label>
+          <input
+            type="range"
+            id="trendlineSlider"
+            min="10"
+            step="5"
+            value="60"
+            style="width: 200px"
+          />
+        </div>
       </div>
 
       <canvas id="myChart"></canvas>
     </div>
     <script>
-        const predictionTs = {{ prediction_ts | tojson }};
-        const startTs = {{ start_ts | tojson }};
-        const labels = {{ labels | tojson }};
-        const values = {{ values | tojson }};
+      const predictionTs = {{ prediction_ts | tojson }};
+      const startTs = {{ start_ts | tojson }};
+      const labels = {{ labels | tojson }};
+      const values = {{ values | tojson }};
 
-        // Format prediction text
       const predictionEl = document.getElementById('prediction-text');
-      if (predictionTs) {
-        const date = new Date(predictionTs * 1000);
-        const now = new Date();
-        const hoursRemaining = Math.round((date - now) / (1000 * 60 * 60));
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            predictionEl.textContent = "Predicted 100% at: " + date.toLocaleString() + " " + timeZone + " (in " + hoursRemaining + " hours)";
-      } else {
-        predictionEl.textContent = "Not enough data to predict.";
+      const trendlineSlider = document.getElementById('trendlineSlider');
+      const trendlineValueDisplay = document.getElementById('trendlineValue');
+      const scaleToggle = document.getElementById('scaleToggle');
+      const zoomLastHourToggle = document.getElementById('zoomLastHourToggle');
+      const lightModeToggle = document.getElementById('lightModeToggle');
+
+      // Set max value for slider
+      if (labels.length > 0) {
+          const totalDurationMinutes = (labels[labels.length - 1] - labels[0]) / (1000 * 60);
+          trendlineSlider.max = Math.min(120, Math.max(10, Math.floor(totalDurationMinutes)));
       }
 
       const ctx = document.getElementById('myChart').getContext('2d');
+
+      // Get initial colors from CSS variables
+      const computedStyle = getComputedStyle(document.body);
+
       const myChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Percentage',
-                    data: values,
-                    borderColor: '#000000',
-                    borderWidth: 1.5,
-                    pointRadius: 0,
-                    pointHoverRadius: 4,
-                    fill: false,
-                    tension: 0
-                },
-                {
-                    label: 'Trendline',
-                    data: [],
-                    borderColor: '#ff6384',
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    pointRadius: 0,
-                    fill: false,
-                    tension: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false,
-                        callbacks: {
-                            title: function(context) {
-                                if (context.length > 0) {
-                                    return new Date(context[0].parsed.x).toLocaleString();
-                                }
-                                return '';
-                            },
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                if (context.parsed.y !== null) {
-                                    label += context.parsed.y.toFixed(2);
-                                }
-                                return label;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: {
-                            unit: 'minute',
-                            stepSize: 30,
-                            displayFormats: {
-                                minute: 'h:mm'
-                            }
-                        },
-                        ticks: {
-                            stepSize: 30,
-                            source: 'auto'
-                        },
-                        display: true,
-                        grid: {
-                            display: false
-                        }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        grid: {
-                            color: '#eeeeee'
-                        }
-                    }
-                },
-                interaction: {
-                    mode: 'nearest',
-                    axis: 'x',
-                    intersect: false
-                }
-            }
-        });
+          type: 'line',
+          data: {
+              labels: labels,
+              datasets: [{
+                  label: 'Percentage',
+                  data: values,
+                  borderColor: computedStyle.getPropertyValue('--chart-line-color').trim(),
+                  borderWidth: 1.5,
+                  pointRadius: 0,
+                  pointHoverRadius: 4,
+                  fill: false,
+                  tension: 0
+              },
+              {
+                  label: 'Trendline',
+                  data: [],
+                  borderColor: computedStyle.getPropertyValue('--chart-trend-color').trim(),
+                  borderWidth: 2,
+                  borderDash: [5, 5],
+                  pointRadius: 0,
+                  fill: false,
+                  tension: 0
+              }]
+          },
+          options: {
+              responsive: true,
+              plugins: {
+                  legend: {
+                      display: false
+                  },
+                  tooltip: {
+                      mode: 'index',
+                      intersect: false,
+                      callbacks: {
+                          title: function(context) {
+                              if (context.length > 0) {
+                                  const date = new Date(context[0].parsed.x);
+                                  return date.toLocaleString(undefined, {
+                                    weekday: 'short',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: 'numeric',
+                                    minute: '2-digit'
+                                  });
+                              }
+                              return '';
+                          },
+                          label: function(context) {
+                              let label = context.dataset.label || '';
+                              if (label) {
+                                  label += ': ';
+                              }
+                              if (context.parsed.y !== null) {
+                                  label += context.parsed.y.toFixed(2);
+                              }
+                              return label;
+                          }
+                      }
+                  }
+              },
+              scales: {
+                  x: {
+                      type: 'time',
+                      time: {
+                          unit: 'minute',
+                          stepSize: 30,
+                          displayFormats: {
+                              minute: 'h:mm a'
+                          }
+                      },
+                      ticks: {
+                          stepSize: 30,
+                          source: 'auto',
+                          color: computedStyle.getPropertyValue('--chart-tick-color').trim()
+                      },
+                      display: true,
+                      grid: {
+                          display: false
+                      }
+                  },
+                  y: {
+                      beginAtZero: false,
+                      grid: {
+                          color: computedStyle.getPropertyValue('--chart-grid-color').trim()
+                      },
+                      ticks: {
+                          color: computedStyle.getPropertyValue('--chart-tick-color').trim()
+                      }
+                  }
+              },
+              interaction: {
+                  mode: 'nearest',
+                  axis: 'x',
+                  intersect: false
+              }
+          }
+      });
 
-                // Trendline Logic
-        const trendlineToggle = document.getElementById('trendlineToggle');
-        function updateTrendline() {
-            if (trendlineToggle.checked && labels.length > 1) {
-                // Use only the last 60 points
-                const subsetSize = 60;
-                const startIndex = Math.max(0, labels.length - subsetSize);
+      function calculateRegression(subsetLabels, subsetValues) {
+           const n = subsetLabels.length;
+           if (n < 2) return null;
 
-                const subsetLabels = labels.slice(startIndex);
-                const subsetValues = values.slice(startIndex);
+           const refT = subsetLabels[0];
+           let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
 
-                const n = subsetLabels.length;
-                const refT = subsetLabels[0];
+           for (let i = 0; i < n; i++) {
+               const x = subsetLabels[i] - refT;
+               const y = subsetValues[i];
+               sumX += x;
+               sumY += y;
+               sumXY += x * y;
+               sumXX += x * x;
+           }
 
-                let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+           const denominator = (n * sumXX - sumX * sumX);
+           if (denominator === 0) return null;
 
-                for (let i = 0; i < n; i++) {
-                    const x = subsetLabels[i] - refT;
-                    const y = subsetValues[i];
-                    sumX += x;
-                    sumY += y;
-                    sumXY += x * y;
-                    sumXX += x * x;
-                }
+           const slope = (n * sumXY - sumX * sumY) / denominator;
+           const intercept = (sumY - slope * sumX) / n;
 
-                const denominator = (n * sumXX - sumX * sumX);
-                if (denominator === 0) return;
+           return { slope, intercept, refT };
+      }
 
-                const slope = (n * sumXY - sumX * sumY) / denominator;
-                const intercept = (sumY - slope * sumX) / n;
+      function updateTrendline() {
+          const minutes = parseInt(trendlineSlider.value);
+          trendlineValueDisplay.textContent = minutes;
 
-                // Extend to full range
-                let startX = labels[0];
-                let endX = labels[labels.length - 1];
+          if (labels.length < 2) {
+              predictionEl.textContent = "Not enough data to predict.";
+              return;
+          }
 
-                // Check if scaled
-                const scaleToggle = document.getElementById('scaleToggle');
-                if (scaleToggle.checked && predictionTs) {
-                    endX = predictionTs * 1000;
-                }
+          const lastTime = labels[labels.length - 1];
+          const cutoffTime = lastTime - (minutes * 60 * 1000);
 
-                let startY = slope * (startX - refT) + intercept;
-                let endY = slope * (endX - refT) + intercept;
+          const subsetLabels = [];
+          const subsetValues = [];
 
-                // Ensure we don't go below 0%
-                if (startY < 0 && slope !== 0) {
-                    startX = refT - intercept / slope;
-                    startY = 0;
-                }
-                if (endY < 0 && slope !== 0) {
-                    endX = refT - intercept / slope;
-                    endY = 0;
-                }
+          for(let i=0; i<labels.length; i++) {
+              if (labels[i] >= cutoffTime) {
+                  subsetLabels.push(labels[i]);
+                  subsetValues.push(values[i]);
+              }
+          }
 
-                myChart.data.datasets[1].data = [
-                    {x: startX, y: startY},
-                    {x: endX, y: endY}
-                ];
-            } else {
-                myChart.data.datasets[1].data = [];
-            }
-            myChart.update();
-        }
-        trendlineToggle.addEventListener('change', updateTrendline);
+          const reg = calculateRegression(subsetLabels, subsetValues);
+          let targetX = null;
 
-        // Toggle Logic
-        const scaleToggle = document.getElementById('scaleToggle');
-        const zoomLastHourToggle = document.getElementById('zoomLastHourToggle');
+          if (reg && reg.slope > 0) {
+              // Calculate prediction
+              // y = slope * (x - refT) + intercept
+              // 100 = slope * (targetX - refT) + intercept
+              // targetX = ((100 - intercept) / slope) + refT
 
-        scaleToggle.addEventListener('change', (e) => {
-          if (e.target.checked) {
-            // Uncheck Zoom Last Hour if checked
-            if (zoomLastHourToggle.checked) {
-                zoomLastHourToggle.checked = false;
-                myChart.options.scales.x.min = undefined;
-            }
+              targetX = ((100 - reg.intercept) / reg.slope) + reg.refT;
+              const predictionDate = new Date(targetX);
 
-            // Scale to 0-100% and Start-Predicted
-            myChart.options.scales.y.min = 0;
-            myChart.options.scales.y.max = 100;
+              // Update text
+              const now = new Date();
 
-            if (predictionTs) {
-               const predictedDate = new Date(predictionTs * 1000);
-               myChart.options.scales.x.max = predictedDate.valueOf();
-            }
+              const options = {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit'
+              };
+              const formattedDate = predictionDate.toLocaleString(undefined, options);
+
+              const diffMs = predictionDate - now;
+              const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+              const diffMins = Math.round((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+              let timeRemaining = "";
+              if (diffHrs > 0) {
+                  timeRemaining += `${diffHrs}h `;
+              }
+              timeRemaining += `${diffMins}m`;
+
+              predictionEl.innerHTML = `Predicted completion: <span style="color:var(--text-color); font-weight:bold">${formattedDate}</span> <span style="font-size:0.9em">(in ${timeRemaining})</span>`;
+
+              // Update Chart Trendline
+              // Extend to full range or predicted time
+              let startX = labels[0];
+              let endX = labels[labels.length - 1];
+
+              if (scaleToggle.checked) {
+                  endX = targetX;
+              }
+
+              let startY = reg.slope * (startX - reg.refT) + reg.intercept;
+              let endY = reg.slope * (endX - reg.refT) + reg.intercept;
+
+               // Ensure we don't go below 0%
+              if (startY < 0) {
+                  // 0 = slope * (x - refT) + intercept
+                  // x = -intercept/slope + refT
+                  startX = -reg.intercept / reg.slope + reg.refT;
+                  startY = 0;
+              }
+
+              myChart.data.datasets[1].data = [
+                  {x: startX, y: startY},
+                  {x: endX, y: endY}
+              ];
 
           } else {
-            // Reset
-            myChart.options.scales.y.min = undefined;
-            myChart.options.scales.y.max = undefined;
-            myChart.options.scales.x.max = undefined;
+              predictionEl.textContent = "Cannot predict completion (slope <= 0 or insufficient data).";
+              myChart.data.datasets[1].data = [];
+          }
+
+          // Update scale max if needed
+          if (scaleToggle.checked) {
+               myChart.options.scales.y.min = 0;
+               myChart.options.scales.y.max = 100;
+               if (targetX) {
+                  myChart.options.scales.x.max = targetX;
+               } else {
+                  myChart.options.scales.x.max = undefined;
+               }
+          } else {
+               myChart.options.scales.y.min = undefined;
+               myChart.options.scales.y.max = undefined;
+               myChart.options.scales.x.max = undefined;
+          }
+
+          // Zoom Last Hour Logic
+          if (zoomLastHourToggle.checked) {
+               const oneHourAgo = Date.now() - (60 * 60 * 1000);
+               myChart.options.scales.x.min = oneHourAgo;
+          } else {
+               myChart.options.scales.x.min = undefined;
+          }
+
+          myChart.update();
+      }
+
+      trendlineSlider.addEventListener('input', updateTrendline);
+
+      scaleToggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          // Uncheck Zoom Last Hour if checked
+          if (zoomLastHourToggle.checked) {
+              zoomLastHourToggle.checked = false;
+          }
+        }
+        updateTrendline();
+      });
+
+      zoomLastHourToggle.addEventListener('change', (e) => {
+          if (e.target.checked) {
+              // Uncheck Scale to Max Time if checked
+              if (scaleToggle.checked) {
+                  scaleToggle.checked = false;
+              }
           }
           updateTrendline();
-        });
+      });
 
-        // Zoom Last Hour Logic
-        zoomLastHourToggle.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                // Uncheck Scale to Max Time if checked
-                if (scaleToggle.checked) {
-                    scaleToggle.checked = false;
-                    myChart.options.scales.y.min = undefined;
-                    myChart.options.scales.y.max = undefined;
-                    myChart.options.scales.x.max = undefined;
-                }
+      lightModeToggle.addEventListener('change', (e) => {
+          if (e.target.checked) {
+              document.body.classList.add('light-mode');
+          } else {
+              document.body.classList.remove('light-mode');
+          }
 
-                const oneHourAgo = Date.now() - (60 * 60 * 1000);
-                myChart.options.scales.x.min = oneHourAgo;
-            } else {
-                myChart.options.scales.x.min = undefined;
-            }
-            updateTrendline();
-            myChart.update();
-        });
+          // Update Chart Colors
+          const style = getComputedStyle(document.body);
+          myChart.data.datasets[0].borderColor = style.getPropertyValue('--chart-line-color').trim();
+          myChart.data.datasets[1].borderColor = style.getPropertyValue('--chart-trend-color').trim();
+          myChart.options.scales.x.ticks.color = style.getPropertyValue('--chart-tick-color').trim();
+          myChart.options.scales.y.ticks.color = style.getPropertyValue('--chart-tick-color').trim();
+          myChart.options.scales.y.grid.color = style.getPropertyValue('--chart-grid-color').trim();
+
+          myChart.update();
+      });
+
+      // Initial call
+      updateTrendline();
     </script>
   </body>
 </html>
